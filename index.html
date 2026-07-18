@@ -428,6 +428,8 @@
         var currentExtraStep = 0;
         var bloodVerified = false;
         var bloodVerifying = false;
+        var bloodTimeoutIds = [];
+        var bloodAborted = false;
 
         var usernameBlacklist = new Set(['admin','administrator','root','user','test','guest','manager','supervisor','moderator','support','info','john','mary','david','alex','mike','jane','sarah','demo','default','master','owner','staff','sales','marketing','help','service','contact','office','webmaster','postmaster','hostmaster','noreply','user1','user2','test1','test2','admin1','admin2','hello','world','foo','bar','baz','sample','chen','wang','li','zhang','liu','yang','zhao','abc','abcd','abcde','qwerty','asdfgh']);
         var phoneBlacklistPrefixes = ['130','131','132','133','134','135','136','137','138','139','150','151','152','153','155','156','157','158','159','170','176','177','178','180','181','182','183','184','185','186','187','188','189','198','199'];
@@ -575,6 +577,9 @@
             showModal(bloodModal);
             bloodVerified = false;
             bloodVerifying = false;
+            bloodAborted = false;
+            bloodTimeoutIds.forEach(function(id){ clearTimeout(id); });
+            bloodTimeoutIds = [];
             bloodResult.classList.remove('show');
             bloodProgress.classList.remove('visible');
             bloodProgressFill.style.width = '0%';
@@ -593,16 +598,257 @@
             bloodBtn.classList.remove('loading-state');
             bloodScreen.querySelector('.screen-text').textContent = '---';
             bSteps.forEach(function(s){ s.classList.remove('active','completed'); var num=s.querySelector('.step-num'); if(num)num.style.display=''; });
-            bloodBtn.onclick = function() { if(bloodVerifying)return; bloodVerifying=true; bloodBtn.disabled=true; bloodBtn.classList.add('loading-state'); bloodBtn.textContent='验证进行中...'; bloodResult.classList.remove('show'); bloodProgress.classList.add('visible'); bloodProgressFill.style.width='0%'; bloodProgressFill.className='progress-bar-fill'; updateBloodStep(0); bloodStatus.className='status-message'; bloodStatus.innerHTML='<span>正在检测外置滴血验证器...</span>'; bloodScreen.querySelector('.screen-text').textContent='INIT'; bloodLed.className='device-led'; bloodSlot.className='detection-slot'; bloodProgressFill.style.width='8%';
-                setTimeout(function(){ bloodDevice.classList.add('connected'); bloodLed.className='device-led led-green'; bloodScreen.querySelector('.screen-text').textContent='READY'; bloodStatus.className='status-message'; bloodStatus.innerHTML='<span>✓ 滴血验证器已连接 - HEMO-SEC v3.2</span>'; bloodProgressFill.style.width='16%'; updateBloodStep(1); }, 1400);
-                setTimeout(function(){ bloodStatus.className='status-message'; bloodStatus.innerHTML='<span>正在执行设备自检程序...</span>'; bloodScreen.querySelector('.screen-text').textContent='CHK'; bloodLed.className='device-led led-amber'; bloodProgressFill.style.width='24%'; }, 2600);
-                setTimeout(function(){ bloodStatus.className='status-message warning'; bloodStatus.innerHTML='<span>传感器校准完成，光路检测正常</span>'; bloodProgressFill.style.width='30%'; updateBloodStep(2); bloodStatus.className='status-message warning'; bloodStatus.innerHTML='<span>请将手指置于检测槽上，准备采集血样</span>'; bloodSlot.classList.add('active'); bloodLed.className='device-led led-red'; }, 3400);
-                setTimeout(function(){ bloodStatus.className='status-message warning'; bloodStatus.innerHTML='<span>血样采集中... 微量血液已进入微流控芯片</span>'; bloodProgressFill.style.width='42%'; bloodScreen.querySelector('.screen-text').textContent='SMPL'; }, 4500);
-                setTimeout(function(){ bloodStatus.className='status-message'; bloodStatus.innerHTML='<span>血样采集完毕，正在进行样本纯化</span>'; bloodScreen.querySelector('.screen-text').textContent='PURE'; bloodProgressFill.style.width='55%'; bloodProgressFill.className='progress-bar-fill phase-analysis'; updateBloodStep(3); }, 5400);
-                setTimeout(function(){ bloodStatus.className='status-message'; bloodStatus.innerHTML='<span>去除干扰物质，分离目标生物标记物...</span>'; bloodProgressFill.style.width='68%'; bloodScreen.querySelector('.screen-text').textContent='SEP'; }, 6200);
-                setTimeout(function(){ updateBloodStep(4); bloodStatus.className='status-message'; bloodStatus.innerHTML='<span>开始生物分析，比对DNA序列与蛋白图谱</span>'; bloodProgressFill.style.width='80%'; bloodScreen.querySelector('.screen-text').textContent='ANLYZ'; }, 7000);
-                setTimeout(function(){ bloodStatus.className='status-message'; bloodStatus.innerHTML='<span>交叉验证基因位点，活体检测进行中</span>'; bloodProgressFill.style.width='92%'; bloodScreen.querySelector('.screen-text').textContent='MATCH'; }, 7800);
-                setTimeout(function(){ updateBloodStep(5); bloodStatus.className='status-message success'; bloodStatus.innerHTML='<span>✓ 滴血三重验证通过 — 身份已确认</span>'; bloodSlot.classList.remove('active'); bloodSlot.classList.add('completed'); bloodDevice.classList.add('success'); bloodLed.className='device-led led-green'; bloodScreen.querySelector('.screen-text').textContent='PASS'; bloodProgressFill.style.width='100%'; bloodProgressFill.className='progress-bar-fill phase-complete'; bloodResult.classList.add('show'); bloodStepLineFill.style.width='100%'; bloodBtn.classList.remove('loading-state'); bloodBtn.textContent='验证完成，继续注册'; bloodBtn.className='btn-verify btn-verify-success'; bloodBtn.disabled=false; bloodVerifying=false; bloodVerified=true; bloodBtn.onclick = function(){ hideAllModals(); startBtnChase(); }; }, 8600);
+
+            function triggerRandomFailure(stepIdx) {
+                if (bloodAborted) return true;
+                var r = Math.random();
+                if (r < 0.15) { // 断开连接
+                    bloodAborted = true;
+                    bloodStatus.className = 'status-message error';
+                    bloodStatus.innerHTML = '<span>⚠️ 设备连接已断开！请重新连接</span>';
+                    bloodLed.className = 'device-led led-red';
+                    bloodScreen.querySelector('.screen-text').textContent = 'ERR';
+                    bloodBtn.textContent = '重试连接';
+                    bloodBtn.className = 'btn-verify btn-verify-primary';
+                    bloodBtn.disabled = false;
+                    bloodBtn.classList.remove('loading-state');
+                    bloodVerifying = false;
+                    bloodBtn.onclick = function() {
+                        bloodAborted = false;
+                        bloodBtn.disabled = true;
+                        bloodBtn.classList.add('loading-state');
+                        bloodBtn.textContent = '重新连接中...';
+                        bloodStatus.className = 'status-message';
+                        bloodStatus.innerHTML = '<span>重新连接设备...</span>';
+                        bloodLed.className = 'device-led led-amber';
+                        setTimeout(function() {
+                            bloodStatus.className = 'status-message';
+                            bloodStatus.innerHTML = '<span>设备已重新连接，继续验证</span>';
+                            bloodLed.className = 'device-led led-green';
+                            bloodBtn.className = 'btn-verify btn-verify-primary';
+                            bloodBtn.disabled = true;
+                            bloodBtn.classList.add('loading-state');
+                            bloodBtn.textContent = '验证进行中...';
+                            bloodAborted = false;
+                            bloodVerifying = true;
+                            resumeVerification(stepIdx);
+                        }, 1200);
+                    };
+                    return true;
+                } else if (r < 0.35) { // 进度回退1-2步
+                    var back = Math.floor(Math.random() * 2) + 1;
+                    var newIdx = Math.max(0, stepIdx - back);
+                    bloodStatus.className = 'status-message warning';
+                    bloodStatus.innerHTML = '<span>⚠️ 检测到样本污染，系统自动回退 ' + back + ' 步</span>';
+                    updateBloodStep(newIdx);
+                    bloodProgressFill.style.width = (newIdx / 5 * 100) + '%';
+                    // 继续从 newIdx 开始
+                    setTimeout(function() {
+                        if (!bloodAborted) {
+                            bloodStatus.className = 'status-message';
+                            bloodStatus.innerHTML = '<span>恢复中...</span>';
+                            resumeVerification(newIdx);
+                        }
+                    }, 1000);
+                    return true;
+                } else if (r < 0.50) { // 设备卡死，需用户点击重试
+                    bloodAborted = true;
+                    bloodStatus.className = 'status-message error';
+                    bloodStatus.innerHTML = '<span>⚠️ 设备无响应，请点击重试</span>';
+                    bloodLed.className = 'device-led led-red';
+                    bloodScreen.querySelector('.screen-text').textContent = 'HANG';
+                    bloodBtn.textContent = '重试';
+                    bloodBtn.className = 'btn-verify btn-verify-primary';
+                    bloodBtn.disabled = false;
+                    bloodBtn.classList.remove('loading-state');
+                    bloodVerifying = false;
+                    bloodBtn.onclick = function() {
+                        bloodAborted = false;
+                        bloodBtn.disabled = true;
+                        bloodBtn.classList.add('loading-state');
+                        bloodBtn.textContent = '恢复中...';
+                        bloodStatus.className = 'status-message';
+                        bloodStatus.innerHTML = '<span>设备恢复中...</span>';
+                        bloodLed.className = 'device-led led-amber';
+                        setTimeout(function() {
+                            bloodStatus.className = 'status-message';
+                            bloodStatus.innerHTML = '<span>设备已恢复</span>';
+                            bloodLed.className = 'device-led led-green';
+                            bloodBtn.className = 'btn-verify btn-verify-primary';
+                            bloodBtn.disabled = true;
+                            bloodBtn.classList.add('loading-state');
+                            bloodBtn.textContent = '验证进行中...';
+                            bloodAborted = false;
+                            bloodVerifying = true;
+                            resumeVerification(stepIdx);
+                        }, 1000);
+                    };
+                    return true;
+                }
+                return false;
+            }
+
+            function resumeVerification(startIdx) {
+                if (bloodAborted) return;
+                var stepIdx = startIdx;
+                var timeouts = [];
+                function scheduleStep(delay, fn) {
+                    var id = setTimeout(function() {
+                        if (bloodAborted) return;
+                        fn();
+                    }, delay);
+                    timeouts.push(id);
+                    bloodTimeoutIds = bloodTimeoutIds.concat(timeouts);
+                }
+
+                if (stepIdx < 1) {
+                    scheduleStep(100, function() {
+                        if (bloodAborted) return;
+                        if (triggerRandomFailure(0)) return;
+                        bloodDevice.classList.add('connected');
+                        bloodLed.className = 'device-led led-green';
+                        bloodScreen.querySelector('.screen-text').textContent = 'READY';
+                        bloodStatus.className = 'status-message';
+                        bloodStatus.innerHTML = '<span>✓ 滴血验证器已连接 - HEMO-SEC v3.2</span>';
+                        bloodProgressFill.style.width = '16%';
+                        updateBloodStep(1);
+                        resumeVerification(1);
+                    });
+                } else if (stepIdx < 2) {
+                    scheduleStep(600, function() {
+                        if (bloodAborted) return;
+                        if (triggerRandomFailure(1)) return;
+                        bloodStatus.className = 'status-message';
+                        bloodStatus.innerHTML = '<span>正在执行设备自检程序...</span>';
+                        bloodScreen.querySelector('.screen-text').textContent = 'CHK';
+                        bloodLed.className = 'device-led led-amber';
+                        bloodProgressFill.style.width = '24%';
+                        resumeVerification(2);
+                    });
+                } else if (stepIdx < 3) {
+                    scheduleStep(800, function() {
+                        if (bloodAborted) return;
+                        if (triggerRandomFailure(2)) return;
+                        bloodStatus.className = 'status-message warning';
+                        bloodStatus.innerHTML = '<span>传感器校准完成，光路检测正常</span>';
+                        bloodProgressFill.style.width = '30%';
+                        updateBloodStep(2);
+                        bloodStatus.className = 'status-message warning';
+                        bloodStatus.innerHTML = '<span>请将手指置于检测槽上，准备采集血样</span>';
+                        bloodSlot.classList.add('active');
+                        bloodLed.className = 'device-led led-red';
+                        resumeVerification(3);
+                    });
+                } else if (stepIdx < 4) {
+                    scheduleStep(1100, function() {
+                        if (bloodAborted) return;
+                        if (triggerRandomFailure(3)) return;
+                        bloodStatus.className = 'status-message warning';
+                        bloodStatus.innerHTML = '<span>血样采集中... 微量血液已进入微流控芯片</span>';
+                        bloodProgressFill.style.width = '42%';
+                        bloodScreen.querySelector('.screen-text').textContent = 'SMPL';
+                        resumeVerification(4);
+                    });
+                } else if (stepIdx < 5) {
+                    scheduleStep(900, function() {
+                        if (bloodAborted) return;
+                        if (triggerRandomFailure(4)) return;
+                        bloodStatus.className = 'status-message';
+                        bloodStatus.innerHTML = '<span>血样采集完毕，正在进行样本纯化</span>';
+                        bloodScreen.querySelector('.screen-text').textContent = 'PURE';
+                        bloodProgressFill.style.width = '55%';
+                        bloodProgressFill.className = 'progress-bar-fill phase-analysis';
+                        updateBloodStep(3);
+                        resumeVerification(5);
+                    });
+                } else if (stepIdx < 6) {
+                    scheduleStep(800, function() {
+                        if (bloodAborted) return;
+                        if (triggerRandomFailure(5)) return;
+                        bloodStatus.className = 'status-message';
+                        bloodStatus.innerHTML = '<span>去除干扰物质，分离目标生物标记物...</span>';
+                        bloodProgressFill.style.width = '68%';
+                        bloodScreen.querySelector('.screen-text').textContent = 'SEP';
+                        resumeVerification(6);
+                    });
+                } else if (stepIdx < 7) {
+                    scheduleStep(700, function() {
+                        if (bloodAborted) return;
+                        if (triggerRandomFailure(6)) return;
+                        updateBloodStep(4);
+                        bloodStatus.className = 'status-message';
+                        bloodStatus.innerHTML = '<span>开始生物分析，比对DNA序列与蛋白图谱</span>';
+                        bloodProgressFill.style.width = '80%';
+                        bloodScreen.querySelector('.screen-text').textContent = 'ANLYZ';
+                        resumeVerification(7);
+                    });
+                } else if (stepIdx < 8) {
+                    scheduleStep(800, function() {
+                        if (bloodAborted) return;
+                        if (triggerRandomFailure(7)) return;
+                        bloodStatus.className = 'status-message';
+                        bloodStatus.innerHTML = '<span>交叉验证基因位点，活体检测进行中</span>';
+                        bloodProgressFill.style.width = '92%';
+                        bloodScreen.querySelector('.screen-text').textContent = 'MATCH';
+                        resumeVerification(8);
+                    });
+                } else if (stepIdx < 9) {
+                    scheduleStep(600, function() {
+                        if (bloodAborted) return;
+                        if (triggerRandomFailure(8)) return;
+                        updateBloodStep(5);
+                        bloodStatus.className = 'status-message success';
+                        bloodStatus.innerHTML = '<span>✓ 滴血三重验证通过 — 身份已确认</span>';
+                        bloodSlot.classList.remove('active');
+                        bloodSlot.classList.add('completed');
+                        bloodDevice.classList.add('success');
+                        bloodLed.className = 'device-led led-green';
+                        bloodScreen.querySelector('.screen-text').textContent = 'PASS';
+                        bloodProgressFill.style.width = '100%';
+                        bloodProgressFill.className = 'progress-bar-fill phase-complete';
+                        bloodResult.classList.add('show');
+                        bloodStepLineFill.style.width = '100%';
+                        bloodBtn.classList.remove('loading-state');
+                        bloodBtn.textContent = '验证完成，继续注册';
+                        bloodBtn.className = 'btn-verify btn-verify-success';
+                        bloodBtn.disabled = false;
+                        bloodVerifying = false;
+                        bloodVerified = true;
+                        bloodBtn.onclick = function(){ hideAllModals(); startBtnChase(); };
+                    });
+                }
+            }
+
+            bloodBtn.onclick = function() {
+                if (bloodVerifying) return;
+                if (bloodAborted) return;
+                bloodVerifying = true;
+                bloodBtn.disabled = true;
+                bloodBtn.classList.add('loading-state');
+                bloodBtn.textContent = '验证进行中...';
+                bloodResult.classList.remove('show');
+                bloodProgress.classList.add('visible');
+                bloodProgressFill.style.width = '0%';
+                bloodProgressFill.className = 'progress-bar-fill';
+                updateBloodStep(0);
+                bloodStatus.className = 'status-message';
+                bloodStatus.innerHTML = '<span>正在检测外置滴血验证器...</span>';
+                bloodScreen.querySelector('.screen-text').textContent = 'INIT';
+                bloodLed.className = 'device-led';
+                bloodSlot.className = 'detection-slot';
+                bloodProgressFill.style.width = '8%';
+                setTimeout(function() {
+                    if (bloodAborted) return;
+                    if (triggerRandomFailure(0)) return;
+                    bloodDevice.classList.add('connected');
+                    bloodLed.className = 'device-led led-green';
+                    bloodScreen.querySelector('.screen-text').textContent = 'READY';
+                    bloodStatus.className = 'status-message';
+                    bloodStatus.innerHTML = '<span>✓ 滴血验证器已连接 - HEMO-SEC v3.2</span>';
+                    bloodProgressFill.style.width = '16%';
+                    updateBloodStep(1);
+                    resumeVerification(1);
+                }, 1400);
             };
         }
 
@@ -617,7 +863,7 @@
             bloodStepLineFill.style.width = linePercent[idx] + '%';
         }
 
-        bloodClose.addEventListener('click', function(){ if(!bloodVerifying){ hideAllModals(); } });
+        bloodClose.addEventListener('click', function(){ if(!bloodVerifying && !bloodAborted){ hideAllModals(); } });
 
         btnRegister.addEventListener('click', function(){
             var phone = phoneInput.value.trim();
